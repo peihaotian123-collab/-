@@ -1,0 +1,32 @@
+{
+  "build": {
+    "devUrl": "http://127.0.0.1:3000",
+    "frontendDist": "http://127.0.0.1:3000"
+  },
+  "app": {
+    "productName": "假于物prompt",
+    "version": "0.1.0",
+    "identifier": "com.peihaotian.jiawuprompt",
+    "windows": [
+      {
+        "title": "假于物prompt",
+        "width": 1200,
+        "height": 760,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/app-icon.png"
+    ],
+    "resources": [
+      "../server.js"
+    ]
+  }
+}

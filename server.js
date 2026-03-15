@@ -11,8 +11,13 @@ const execFileAsync = promisify(execFile);
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "127.0.0.1";
 const ROOT = __dirname;
-const DB_DIR = path.join(ROOT, "data");
-const DB_PATH = path.join(DB_DIR, "prompts-db.json");
+const DEFAULT_DB_DIR = path.join(ROOT, "data");
+const DB_DIR = process.env.PROMPT_DB_DIR
+  ? path.resolve(process.env.PROMPT_DB_DIR)
+  : DEFAULT_DB_DIR;
+const DB_PATH = process.env.PROMPT_DB_PATH
+  ? path.resolve(process.env.PROMPT_DB_PATH)
+  : path.join(DB_DIR, "prompts-db.json");
 const INDEX_PATH = path.join(ROOT, "index.html");
 
 let writeQueue = Promise.resolve();
