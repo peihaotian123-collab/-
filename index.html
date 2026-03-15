@@ -1,0 +1,3042 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prompt Bloom · 本地 Prompt 管理</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f6fb;
+        --bg-2: #e9eef7;
+        --panel: #ffffff;
+        --panel-glass: rgba(255, 255, 255, 0.82);
+        --stroke: rgba(148, 163, 184, 0.28);
+        --text: #0f172a;
+        --muted: #5f6b7a;
+        --accent: #2f6bff;
+        --accent-2: #20a37f;
+        --danger: #f2555a;
+        --shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+        --radius-xl: 26px;
+        --radius-lg: 20px;
+        --radius-md: 14px;
+        --radius-sm: 10px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont,
+          "Helvetica Neue", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+        background:
+          radial-gradient(circle at 18% 20%, rgba(116, 209, 255, 0.35), transparent 45%),
+          radial-gradient(circle at 82% 8%, rgba(201, 255, 226, 0.45), transparent 40%),
+          linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%);
+        color: var(--text);
+        min-height: 100vh;
+      }
+
+      body.dragging {
+        user-select: none;
+        -webkit-user-select: none;
+      }
+
+      button,
+      input,
+      textarea,
+      select {
+        font: inherit;
+      }
+
+      .app-shell {
+        width: min(1280px, calc(100% - 2.4rem));
+        margin: 1.6rem auto 2.6rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.2rem;
+      }
+
+      .topbar {
+        background: var(--panel-glass);
+        border: 1px solid var(--stroke);
+        border-radius: var(--radius-xl);
+        padding: 1.2rem 1.4rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.2rem;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+      }
+
+      .brand {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+      }
+
+      .brand h1 {
+        margin: 0;
+        font-size: clamp(1.4rem, 2.3vw, 2.1rem);
+      }
+
+      .brand p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+
+      .topbar-actions {
+        display: flex;
+        gap: 0.6rem;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .search {
+        min-width: 240px;
+        border-radius: 999px;
+        border: 1px solid var(--stroke);
+        padding: 0.55rem 0.9rem;
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      .btn {
+        border: 0;
+        border-radius: 999px;
+        padding: 0.55rem 0.95rem;
+        cursor: pointer;
+        font-weight: 600;
+        transition: transform 160ms ease, box-shadow 160ms ease, background 160ms ease;
+      }
+
+      .btn:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn:active {
+        transform: translateY(1px) scale(0.98);
+      }
+
+      .btn.bubble-btn {
+        position: relative;
+      }
+
+      .btn.bubble-btn .btn-label {
+        display: inline-block;
+        transform: scale(1);
+        transition: transform 160ms ease;
+      }
+
+      .btn.bubble-btn:hover {
+        transform: translateY(-1px) scale(1.03);
+      }
+
+      .btn.bubble-btn:hover .btn-label {
+        transform: scale(0.97);
+      }
+
+      .btn-primary {
+        background: var(--accent);
+        color: white;
+        box-shadow: 0 12px 22px rgba(47, 107, 255, 0.24);
+      }
+
+      .btn-primary:hover {
+        transform: translateY(-1px);
+      }
+
+      .btn-ghost {
+        background: rgba(255, 255, 255, 0.7);
+        border: 1px solid var(--stroke);
+        color: var(--text);
+      }
+
+      .btn-subtle {
+        background: rgba(15, 23, 42, 0.06);
+        color: var(--text);
+      }
+
+      .main-grid {
+        display: grid;
+        grid-template-columns: minmax(220px, 0.9fr) minmax(440px, 2fr) minmax(280px, 1fr);
+        gap: 1rem;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--stroke);
+        border-radius: var(--radius-xl);
+        padding: 1rem;
+        box-shadow: var(--shadow);
+      }
+
+      .viewer-panel {
+        position: sticky;
+        top: 1.2rem;
+        align-self: start;
+      }
+
+      .sidebar {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        user-select: none;
+        -webkit-user-select: none;
+        position: sticky;
+        top: 1.2rem;
+        align-self: start;
+        max-height: calc(100vh - 2.4rem);
+      }
+
+      .panel-title {
+        font-size: 1rem;
+        margin: 0 0 0.65rem;
+      }
+
+      .category-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        background: rgba(255, 255, 255, 0.6);
+        border-radius: 16px;
+        padding: 0.4rem;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        backdrop-filter: blur(12px);
+        max-height: calc(80vh - 320px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+        flex: 1;
+        min-height: 160px;
+        width: 100%;
+        align-items: center;
+      }
+
+      .category-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.5rem 0.65rem;
+        border-radius: 12px;
+        cursor: pointer;
+        transition: background 160ms ease, border-color 160ms ease;
+        position: relative;
+        padding-left: 0.6rem;
+        user-select: none;
+        border: 1px solid var(--level-border, rgba(148, 163, 184, 0.28));
+        background: rgba(255, 255, 255, 0.7);
+        width: calc(100% - var(--item-shrink, 0%));
+        font-size: var(--item-size, 0.95rem);
+        color: var(--item-color, #1f2a44);
+        margin: 0 auto;
+      }
+
+      .category-item:hover {
+        background: rgba(47, 107, 255, 0.08);
+      }
+
+      .category-item.active {
+        background: rgba(47, 107, 255, 0.16);
+        color: #11338c;
+      }
+
+      .category-item.ancestor {
+        background: rgba(15, 23, 42, 0.06);
+        border-color: rgba(148, 163, 184, 0.45);
+      }
+
+      .category-item.drag-target {
+        outline: 2px solid rgba(47, 107, 255, 0.45);
+        background: rgba(47, 107, 255, 0.12);
+      }
+
+      .category-label {
+        display: flex;
+        gap: 0.4rem;
+        align-items: center;
+        font-weight: 600;
+      }
+
+      .context-menu {
+        position: fixed;
+        min-width: 170px;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid var(--stroke);
+        border-radius: 14px;
+        box-shadow: 0 18px 30px rgba(15, 23, 42, 0.16);
+        padding: 0.35rem;
+        z-index: 50;
+      }
+
+      .context-menu[hidden] {
+        display: none;
+      }
+
+      .context-item {
+        width: 100%;
+        border: 0;
+        background: transparent;
+        text-align: left;
+        padding: 0.5rem 0.65rem;
+        border-radius: 10px;
+        cursor: pointer;
+        color: #1f2a44;
+        font-size: 0.88rem;
+        transition: background 150ms ease, transform 150ms ease;
+      }
+
+      .context-item:hover {
+        background: rgba(47, 107, 255, 0.12);
+        transform: translateX(2px);
+      }
+
+      .context-item.danger {
+        color: #a12f32;
+      }
+
+      .file-prompt {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.38rem 0.65rem;
+        border-radius: 10px;
+        cursor: pointer;
+        position: relative;
+        padding-left: 0.55rem;
+        transition: background 160ms ease, border-color 160ms ease;
+        user-select: none;
+        border: 1px solid var(--level-border, rgba(148, 163, 184, 0.22));
+        background: rgba(255, 255, 255, 0.55);
+        width: calc(100% - var(--item-shrink, 0%));
+        font-size: var(--item-size, 0.82rem);
+        color: var(--item-color, #5b6574);
+        margin: 0 auto;
+      }
+
+      .category-item[data-depth="0"],
+      .file-prompt[data-depth="0"] {
+        --level-border: rgba(15, 23, 42, 0.8);
+        --item-shrink: 0%;
+        --item-size: 0.98rem;
+        --item-color: #1f2a44;
+        --index-size: 0.9rem;
+      }
+
+      .category-item[data-depth="1"],
+      .file-prompt[data-depth="1"] {
+        --level-border: rgba(31, 41, 55, 0.55);
+        --item-shrink: 10%;
+        --item-size: 0.88rem;
+        --item-color: #3f4b5c;
+        --index-size: 0.76rem;
+      }
+
+      .category-item[data-depth="2"],
+      .file-prompt[data-depth="2"] {
+        --level-border: rgba(107, 114, 128, 0.45);
+        --item-shrink: 18%;
+        --item-size: 0.8rem;
+        --item-color: #5f6a79;
+        --index-size: 0.68rem;
+      }
+
+      .category-item[data-depth="3"],
+      .file-prompt[data-depth="3"] {
+        --level-border: rgba(203, 213, 225, 0.75);
+        --item-shrink: 26%;
+        --item-size: 0.74rem;
+        --item-color: #7a8594;
+        --index-size: 0.6rem;
+      }
+
+      .file-prompt:hover {
+        background: rgba(47, 107, 255, 0.08);
+      }
+
+      .file-prompt.active {
+        background: rgba(47, 107, 255, 0.16);
+        color: #11338c;
+      }
+
+      .drag-orb {
+        position: fixed;
+        width: 40px;
+        height: 40px;
+        border-radius: 999px;
+        background: radial-gradient(
+          circle at 30% 30%,
+          rgba(255, 255, 255, 0.5),
+          rgba(255, 255, 255, 0.16) 48%,
+          rgba(148, 163, 184, 0.16) 75%
+        );
+        box-shadow: none;
+        backdrop-filter: blur(3px) saturate(1.2) brightness(1.08);
+        pointer-events: none;
+        transform: translate(-50%, -50%) rotate(var(--rot, 0deg))
+          scale(var(--sx, 0.9), var(--sy, 0.9));
+        transition: transform 220ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        z-index: 60;
+        animation: orb-float 5.2s ease-in-out infinite;
+      }
+
+      .drag-orb.active {
+        transform: translate(-50%, -50%) rotate(var(--rot, 0deg))
+          scale(var(--sx, 1), var(--sy, 1));
+      }
+
+      .drag-orb.settle {
+        transition: transform 220ms ease;
+        transform: translate(-50%, -50%) scale(1, 1);
+      }
+
+      .drag-orb::after {
+        content: "";
+        position: absolute;
+        inset: 6px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.55), transparent 60%);
+        opacity: 0.42;
+        animation: orb-shimmer var(--shimmer, 3.8s) ease-in-out infinite;
+        transform: rotate(calc(var(--rot, 0deg) * -1));
+      }
+
+      .drag-orb::before {
+        content: "";
+        position: absolute;
+        inset: -12px;
+        border-radius: 999px;
+        background: radial-gradient(circle at 40% 60%, rgba(255, 255, 255, 0.12), transparent 65%);
+        filter: blur(6px);
+        opacity: 0.35;
+        transform: rotate(calc(var(--rot, 0deg) * -1));
+      }
+
+      .drag-orb.release {
+        animation: orb-pop 260ms ease forwards;
+      }
+
+      .drag-orb.release::after,
+      .drag-orb.release::before {
+        animation: none;
+      }
+
+      
+
+      @keyframes orb-pop {
+        0% {
+          transform: translate(-50%, -50%) scale(1);
+          opacity: 1;
+        }
+        60% {
+          transform: translate(-50%, -50%) scale(1.45);
+          opacity: 0.8;
+        }
+        100% {
+          transform: translate(-50%, -50%) scale(2);
+          opacity: 0;
+        }
+      }
+
+      .drop-flash {
+        animation: drop-flash 260ms ease;
+      }
+
+      @keyframes drop-flash {
+        0% {
+          transform: scale(1);
+          box-shadow: 0 0 0 rgba(47, 107, 255, 0);
+        }
+        60% {
+          transform: scale(1.02);
+          box-shadow: 0 10px 22px rgba(47, 107, 255, 0.18);
+        }
+        100% {
+          transform: scale(1);
+          box-shadow: 0 0 0 rgba(47, 107, 255, 0);
+        }
+      }
+
+      @keyframes orb-float {
+        0% {
+          transform: translate(-50%, -50%) rotate(var(--rot, 0deg))
+            scale(calc(var(--sx, 0.92) * (1 + var(--float, 0.06))),
+              calc(var(--sy, 0.92) * (1 - var(--float, 0.06))));
+        }
+        50% {
+          transform: translate(-50%, -50%) rotate(var(--rot, 0deg))
+            scale(calc(var(--sx, 1) * (1 + var(--float, 0.1))),
+              calc(var(--sy, 1) * (1 - var(--float, 0.08))));
+        }
+        100% {
+          transform: translate(-50%, -50%) rotate(var(--rot, 0deg))
+            scale(calc(var(--sx, 0.92) * (1 + var(--float, 0.06))),
+              calc(var(--sy, 0.92) * (1 - var(--float, 0.06))));
+        }
+      }
+
+      @keyframes orb-shimmer {
+        0% {
+          transform: translate(-6%, -4%) rotate(0deg);
+          opacity: 0.65;
+        }
+        50% {
+          transform: translate(8%, 6%) rotate(10deg);
+          opacity: 0.85;
+        }
+        100% {
+          transform: translate(-6%, -4%) rotate(0deg);
+          opacity: 0.65;
+        }
+      }
+
+      @keyframes bubble-flow {
+        0% {
+          transform: translate(-12%, -10%) rotate(0deg) scale(1);
+        }
+        50% {
+          transform: translate(10%, 14%) rotate(16deg) scale(1.08);
+        }
+        100% {
+          transform: translate(-12%, -10%) rotate(0deg) scale(1);
+        }
+      }
+      .cat-toggle {
+        border: 0;
+        background: transparent;
+        color: #546074;
+        width: 22px;
+        height: 22px;
+        border-radius: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 0.95rem;
+        transition: transform 150ms ease;
+      }
+
+      .cat-toggle:hover {
+        color: #1f2a44;
+      }
+
+      .cat-toggle.expanded {
+        transform: rotate(90deg);
+      }
+
+
+
+      .badge {
+        background: rgba(15, 23, 42, 0.08);
+        padding: 0.1rem 0.45rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+
+      .category-form {
+        display: grid;
+        gap: 0.5rem;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+      }
+
+      .field label {
+        font-size: 0.82rem;
+        color: var(--muted);
+      }
+
+      .field input,
+      .field select,
+      .field textarea {
+        border: 1px solid var(--stroke);
+        border-radius: 12px;
+        padding: 0.5rem 0.65rem;
+      }
+
+      .content-edit {
+        border: 1px solid var(--stroke);
+        border-radius: 12px;
+        padding: 0.6rem 0.7rem;
+        min-height: 160px;
+        background: #fff;
+        white-space: pre-wrap;
+        line-height: 1.6;
+        outline: none;
+        max-height: 320px;
+        overflow-y: auto;
+      }
+
+      .prompt-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        animation: slide-in 320ms ease;
+        padding-bottom: 100vh;
+      }
+
+      .list-panel {
+        position: relative;
+        max-height: calc(100vh - 2.4rem);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #promptList {
+        overflow-y: auto;
+        padding-right: 0.6rem;
+        flex: 1;
+        scrollbar-gutter: stable;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .list-panel::after {
+        content: "";
+        position: absolute;
+        top: 1.2rem;
+        right: 0.5rem;
+        width: 8px;
+        height: calc(100% - 2.4rem);
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.06);
+        pointer-events: none;
+      }
+
+      .prompt-card {
+        border: 1px solid var(--stroke);
+        border-radius: var(--radius-lg);
+        padding: 0.9rem;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 16px 32px rgba(15, 23, 42, 0.06);
+        transition: box-shadow 200ms ease, border-color 200ms ease;
+      }
+
+      .prompt-card.has-thumb {
+        grid-template-columns: 144px 1fr;
+      }
+
+      .prompt-card.active {
+        border-color: rgba(47, 107, 255, 0.45);
+        box-shadow: 0 18px 36px rgba(47, 107, 255, 0.16);
+      }
+
+      .prompt-card:hover {
+        box-shadow: 0 18px 36px rgba(15, 23, 42, 0.12);
+      }
+
+      .prompt-card.select-anim {
+        animation: select-pop 240ms ease;
+      }
+
+      .prompt-content {
+        display: grid;
+        gap: 0.4rem;
+      }
+
+      .prompt-card h3 {
+        margin: 0;
+        font-size: 1.02rem;
+      }
+
+      .prompt-thumb {
+        width: 144px;
+        height: 192px;
+        border-radius: 16px;
+        border: 1px solid var(--stroke);
+        background: rgba(15, 23, 42, 0.04);
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 0.7rem;
+        flex-shrink: 0;
+        align-self: center;
+      }
+
+      .prompt-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .prompt-meta {
+        color: var(--muted);
+        font-size: 0.82rem;
+      }
+
+      .prompt-actions {
+        display: flex;
+        gap: 0.7rem;
+        flex-wrap: wrap;
+        margin-top: 0.45rem;
+      }
+
+      .prompt-footer {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 0.35rem;
+      }
+
+      .prompt-date {
+        font-size: 0.72rem;
+        color: var(--muted);
+      }
+
+      .tag-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+      }
+
+      .tag {
+        background: rgba(32, 163, 127, 0.14);
+        color: #1a6b55;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.72rem;
+      }
+
+      .prompt-preview {
+        background: rgba(15, 23, 42, 0.04);
+        border-radius: 12px;
+        padding: 0.55rem 0.7rem;
+        font-size: 0.86rem;
+        color: #293445;
+        line-height: 1.5;
+        margin-top: 0.25rem;
+        max-height: 130px;
+        overflow: auto;
+      }
+
+      .viewer {
+        display: flex;
+        flex-direction: column;
+        gap: 0.9rem;
+      }
+
+      .viewer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.6rem;
+      }
+
+      .viewer-header .prompt-actions {
+        margin-left: auto;
+        justify-content: flex-end;
+      }
+
+      .viewer-header .prompt-actions .btn {
+        min-width: 88px;
+        text-align: center;
+      }
+
+      .viewer-title {
+        margin: 0;
+        font-size: 1.2rem;
+      }
+
+      .viewer-content {
+        background: rgba(15, 23, 42, 0.04);
+        border-radius: var(--radius-md);
+        padding: 0.9rem;
+        line-height: 1.6;
+        white-space: pre-wrap;
+        max-height: 40vh;
+        overflow: auto;
+      }
+
+      .image-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 0.6rem;
+      }
+
+      .image-card {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid var(--stroke);
+        background: rgba(255, 255, 255, 0.8);
+      }
+
+      .image-card img {
+        width: 100%;
+        height: 140px;
+        object-fit: contain;
+        display: block;
+        background: rgba(15, 23, 42, 0.04);
+      }
+
+      .empty {
+        border: 1px dashed rgba(148, 163, 184, 0.6);
+        border-radius: var(--radius-lg);
+        padding: 1.2rem;
+        text-align: center;
+        color: var(--muted);
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .toast {
+        position: fixed;
+        right: 1.2rem;
+        bottom: 1.2rem;
+        padding: 0.6rem 0.9rem;
+        border-radius: 12px;
+        background: rgba(32, 163, 127, 0.96);
+        color: white;
+        box-shadow: 0 18px 30px rgba(32, 163, 127, 0.28);
+        opacity: 0;
+        transform: translateY(16px);
+        transition: opacity 200ms ease, transform 200ms ease;
+        pointer-events: none;
+        z-index: 20;
+      }
+
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      .copy-btn.copied {
+        background: rgba(32, 163, 127, 0.2);
+        color: #126b54;
+        animation: pop 260ms ease;
+      }
+
+      .modal {
+        position: fixed;
+        inset: 0;
+        background: rgba(15, 23, 42, 0.25);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 1.4rem;
+        z-index: 30;
+        backdrop-filter: blur(8px);
+      }
+
+      .modal[hidden] {
+        display: none;
+      }
+
+      .sheet {
+        width: min(860px, 100%);
+        background: var(--panel);
+        border-radius: 32px 32px 22px 22px;
+        padding: 1.2rem 1.4rem 1.5rem;
+        border: 1px solid var(--stroke);
+        box-shadow: var(--shadow);
+        animation: slide-up 300ms ease;
+      }
+
+      .image-modal .sheet {
+        width: min(900px, 92vw);
+        padding: 0.6rem;
+        border-radius: 22px;
+      }
+
+      .image-modal img {
+        width: 100%;
+        max-height: 78vh;
+        object-fit: contain;
+        display: block;
+        border-radius: 16px;
+        background: rgba(15, 23, 42, 0.04);
+      }
+
+      .text-modal .sheet {
+        width: min(900px, 92vw);
+        padding: 1rem 1.2rem;
+        border-radius: 22px;
+      }
+
+      .text-modal .text-body {
+        max-height: 70vh;
+        overflow: auto;
+        background: rgba(15, 23, 42, 0.04);
+        border-radius: 16px;
+        padding: 1rem;
+        line-height: 1.7;
+        white-space: pre-wrap;
+        color: #1f2a44;
+      }
+
+      .file-sheet {
+        width: min(520px, 92vw);
+      }
+
+      .mark-color {
+        cursor: text;
+        transition: color 160ms ease;
+      }
+
+      .mark-bubble {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.08rem 0.4rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.55);
+        border: 1px solid rgba(255, 255, 255, 0.7);
+        color: #1f2a44;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.22);
+        margin: 0 0.08rem;
+        transition: transform 180ms ease, background 240ms ease;
+      }
+
+      .mark-bubble:hover {
+        transform: scale(1.06);
+        background: rgba(255, 255, 255, 0.7);
+      }
+
+      .mark-bubble:active {
+        transform: scale(0.98);
+      }
+
+      .mark-bubble.clicked {
+        animation: mark-pop 220ms ease;
+      }
+
+      @keyframes mark-pop {
+        0% {
+          transform: scale(1);
+        }
+        60% {
+          transform: scale(1.08);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      .category-item:hover,
+      .file-prompt:hover {
+        transform: none;
+      }
+
+      .mark-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-top: 0.35rem;
+      }
+
+      .mark-box {
+        border: 1px solid var(--stroke);
+        border-radius: 12px;
+        padding: 0.5rem;
+        background: rgba(255, 255, 255, 0.75);
+        max-height: 140px;
+        overflow-y: auto;
+      }
+
+      .mark-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 999px;
+        background: rgba(32, 163, 127, 0.14);
+        color: #1a6b55;
+        font-size: 0.75rem;
+      }
+
+      .mark-remove {
+        border: 0;
+        background: rgba(242, 85, 90, 0.2);
+        color: #a12f32;
+        width: 18px;
+        height: 18px;
+        border-radius: 999px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+      }
+
+      .composer {
+        position: fixed;
+        right: 1.2rem;
+        bottom: 1.2rem;
+        width: min(320px, 92vw);
+        background: rgba(255, 255, 255, 0.55);
+        border: 1px solid var(--stroke);
+        border-radius: 20px;
+        padding: 0.85rem;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(16px);
+        z-index: 60;
+        display: grid;
+        gap: 0.6rem;
+      }
+
+      .composer .viewer-header {
+        cursor: grab;
+      }
+
+      .composer.dragging .viewer-header {
+        cursor: grabbing;
+      }
+
+      .composer textarea {
+        width: 100%;
+        min-height: 110px;
+        resize: vertical;
+        overflow: auto;
+        overscroll-behavior: contain;
+      }
+
+      .composer-copy.copied {
+        animation: pop 260ms ease;
+        box-shadow: 0 10px 20px rgba(47, 107, 255, 0.25);
+      }
+
+      .sheet-grid {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        gap: 0.8rem;
+        margin-top: 0.8rem;
+      }
+
+      .col-6 {
+        grid-column: span 6;
+      }
+
+      .col-4 {
+        grid-column: span 4;
+      }
+
+      .col-12 {
+        grid-column: span 12;
+      }
+
+      .editor-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.6rem;
+        margin-top: 0.8rem;
+      }
+
+      .image-preview {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+        gap: 0.5rem;
+      }
+
+      .image-preview-item {
+        position: relative;
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid var(--stroke);
+      }
+
+      .image-preview-item img {
+        width: 100%;
+        height: 100px;
+        object-fit: contain;
+        display: block;
+        background: rgba(15, 23, 42, 0.04);
+      }
+
+      .image-remove {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        border: 0;
+        border-radius: 999px;
+        background: rgba(242, 85, 90, 0.92);
+        color: white;
+        width: 24px;
+        height: 24px;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+
+      @keyframes slide-up {
+        from {
+          transform: translateY(24px);
+          opacity: 0.9;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      @keyframes slide-in {
+        from {
+          opacity: 0;
+          transform: translateX(18px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      @keyframes float-in {
+        from {
+          transform: translateY(16px);
+          opacity: 0;
+        }
+        to {
+          transform: translateY(0);
+          opacity: 1;
+        }
+      }
+
+      @keyframes select-pop {
+        0% {
+          transform: scale(1);
+        }
+        45% {
+          transform: scale(1.015);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      @keyframes pop {
+        0% {
+          transform: scale(1);
+        }
+        45% {
+          transform: scale(1.08);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      @media (max-width: 1100px) {
+        .main-grid {
+          grid-template-columns: 1fr 1fr;
+          grid-template-areas:
+            "sidebar list"
+            "viewer viewer";
+        }
+
+        .sidebar {
+          grid-area: sidebar;
+        }
+
+        .list-panel {
+          grid-area: list;
+        }
+
+        .viewer-panel {
+          grid-area: viewer;
+        }
+      }
+
+      @media (max-width: 860px) {
+        .main-grid {
+          grid-template-columns: 1fr;
+          grid-template-areas:
+            "sidebar"
+            "list"
+            "viewer";
+        }
+
+        .topbar {
+          flex-direction: column;
+          align-items: flex-start;
+        }
+
+        .search {
+          width: 100%;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .col-6,
+        .col-4 {
+          grid-column: span 12;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation-duration: 0.01ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0.01ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <h1>假于物prompt</h1>
+          <p>提示词分类复用，一键导入导出，编写提示词。</p>
+        </div>
+        <div class="topbar-actions">
+          <input id="searchInput" class="search" placeholder="搜索标题、内容、标签" />
+          <button id="exportBtn" class="btn btn-ghost">导出 .promptpack</button>
+          <button id="importBtn" class="btn btn-ghost">导入 .promptpack</button>
+          <button id="newPromptBtn" class="btn btn-primary">新建 Prompt</button>
+          <input id="importFile" type="file" accept=".promptpack" hidden />
+        </div>
+      </header>
+
+      <section class="main-grid">
+        <aside class="panel sidebar">
+          <div>
+          <h3 class="panel-title">文件</h3>
+          <div id="categoryList" class="category-list"></div>
+        </div>
+        <div>
+          <h3 class="panel-title">新建文件</h3>
+          <div class="category-form">
+            <div class="field">
+              <label>文件名称</label>
+              <input id="categoryName" placeholder="例如：增长策略" />
+            </div>
+            <div class="field">
+              <label>父级文件</label>
+              <select id="categoryParent"></select>
+            </div>
+            <button id="addCategoryBtn" class="btn btn-primary">创建文件</button>
+          </div>
+        </div>
+      </aside>
+
+        <section class="panel list-panel">
+          <div class="viewer-header">
+            <h3 class="panel-title">Prompt 列表</h3>
+            <span id="promptCount" class="badge">0 条</span>
+          </div>
+          <div id="promptList"></div>
+        </section>
+
+        <section class="panel viewer-panel">
+          <div id="promptViewer"></div>
+        </section>
+      </section>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <div id="editorModal" class="modal" hidden>
+      <form id="editorForm" class="sheet">
+        <div class="viewer-header">
+          <h3 id="editorTitle" class="panel-title">新建 Prompt</h3>
+          <button type="button" id="closeEditorBtn" class="btn btn-ghost">关闭</button>
+        </div>
+        <div class="sheet-grid">
+          <div class="field col-6">
+            <label>标题</label>
+            <input id="promptTitle" required />
+          </div>
+          <div class="field col-6">
+                  <label>文件</label>
+                  <select id="promptCategory"></select>
+                </div>
+          <div class="field col-12">
+            <label>标签（逗号分隔）</label>
+            <input id="promptTags" />
+          </div>
+          <div class="field col-12">
+            <label>Prompt 内容</label>
+            <div id="promptContent" class="content-edit" contenteditable="true"></div>
+          </div>
+          <div class="field col-12">
+            <label>复用标记</label>
+            <div class="prompt-actions">
+              <button type="button" id="markTextBtn" class="btn btn-ghost">标记选中文本</button>
+              <button type="button" id="clearMarksBtn" class="btn btn-subtle">清空标记</button>
+            </div>
+            <div class="mark-box">
+              <div id="markList" class="mark-row"></div>
+            </div>
+          </div>
+          <div class="field col-12">
+            <label>图片</label>
+            <div class="prompt-actions">
+              <button type="button" id="addImageBtn" class="btn btn-ghost">添加图片</button>
+              <button type="button" id="clearImagesBtn" class="btn btn-subtle">清空</button>
+            </div>
+            <input id="imageInput" type="file" accept="image/*" multiple hidden />
+            <div id="imagePreview" class="image-preview"></div>
+          </div>
+        </div>
+        <div class="editor-actions">
+          <button type="button" id="cancelEditorBtn" class="btn btn-ghost">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="imageModal" class="modal image-modal" hidden>
+      <div id="imageSheet" class="sheet">
+        <img id="imageModalImg" alt="预览图" />
+      </div>
+    </div>
+
+    <div id="textModal" class="modal text-modal" hidden>
+      <div id="textSheet" class="sheet">
+        <div class="viewer-header">
+          <h3 class="panel-title">文字预览</h3>
+          <button id="closeTextBtn" class="btn btn-ghost" type="button">关闭</button>
+        </div>
+        <div id="textModalBody" class="text-body"></div>
+      </div>
+    </div>
+
+    <div id="fileMenu" class="context-menu" hidden>
+      <button class="context-item" data-action="duplicate">复制相同文件</button>
+      <button class="context-item" data-action="rename">重命名</button>
+      <button class="context-item" data-action="move">转移</button>
+      <button class="context-item danger" data-action="delete">删除</button>
+    </div>
+
+    <div id="fileActionModal" class="modal" hidden>
+      <div class="sheet file-sheet">
+        <div class="viewer-header">
+          <h3 id="fileActionTitle" class="panel-title">文件操作</h3>
+          <button id="closeFileActionBtn" class="btn btn-ghost" type="button">关闭</button>
+        </div>
+        <div id="fileRenameField" class="field" style="margin-top:0.8rem;">
+          <label>文件名称</label>
+          <input id="fileRenameInput" />
+        </div>
+        <div id="fileMoveField" class="field" style="margin-top:0.8rem;">
+          <label>目标文件</label>
+          <select id="fileMoveSelect"></select>
+        </div>
+        <div class="editor-actions">
+          <button id="cancelFileActionBtn" class="btn btn-ghost" type="button">取消</button>
+          <button id="confirmFileActionBtn" class="btn btn-primary" type="button">确认</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="viewer-header">
+        <h3 class="panel-title">编写</h3>
+        <span class="badge">Composer</span>
+      </div>
+      <textarea id="composerInput" placeholder="点击标记词语自动加入到这里..."></textarea>
+      <div class="prompt-actions">
+        <button id="composerClearBtn" class="btn btn-ghost">清空</button>
+        <button id="composerCopyBtn" class="btn btn-primary composer-copy">复制编写内容</button>
+      </div>
+    </div>
+
+    <script>
+      const state = {
+        db: { categories: [], prompts: [] },
+        activeCategoryId: "all",
+        activePromptId: null,
+        editorPromptId: null,
+        editorImages: [],
+        editorMarks: [],
+        contextFileId: null,
+        fileAction: { type: null, fileId: null },
+        drag: {
+          active: false,
+          type: null,
+          id: null,
+          targetId: null,
+          timer: null,
+          startX: 0,
+          startY: 0,
+          suppressClickUntil: 0,
+          moved: false,
+          motion: {
+            sx: 1,
+            sy: 1,
+            rot: 0,
+            float: 0.06,
+            speed: 0,
+            targetSx: 1,
+            targetSy: 1,
+            targetRot: 0,
+            targetFloat: 0.06,
+            targetFloatDur: 5.2,
+            targetShimmer: 3.8,
+            targetSpeed: 0
+          },
+          animId: null
+        },
+        copiedId: null,
+        collapsedCategoryIds: new Set(),
+        pinnedPromptId: null
+      };
+
+      const searchInput = document.getElementById("searchInput");
+      const exportBtn = document.getElementById("exportBtn");
+      const importBtn = document.getElementById("importBtn");
+      const importFile = document.getElementById("importFile");
+      const newPromptBtn = document.getElementById("newPromptBtn");
+      const categoryList = document.getElementById("categoryList");
+      const categoryName = document.getElementById("categoryName");
+      const categoryParent = document.getElementById("categoryParent");
+      const addCategoryBtn = document.getElementById("addCategoryBtn");
+      const promptCount = document.getElementById("promptCount");
+      const promptList = document.getElementById("promptList");
+      const promptViewer = document.getElementById("promptViewer");
+      const toast = document.getElementById("toast");
+
+      const editorModal = document.getElementById("editorModal");
+      const editorForm = document.getElementById("editorForm");
+      const editorTitle = document.getElementById("editorTitle");
+      const closeEditorBtn = document.getElementById("closeEditorBtn");
+      const cancelEditorBtn = document.getElementById("cancelEditorBtn");
+      const promptTitle = document.getElementById("promptTitle");
+      const promptCategory = document.getElementById("promptCategory");
+      const promptTags = document.getElementById("promptTags");
+      const promptContent = document.getElementById("promptContent");
+      const addImageBtn = document.getElementById("addImageBtn");
+      const clearImagesBtn = document.getElementById("clearImagesBtn");
+      const imageInput = document.getElementById("imageInput");
+      const imagePreview = document.getElementById("imagePreview");
+      const imageModal = document.getElementById("imageModal");
+      const imageModalImg = document.getElementById("imageModalImg");
+      const imageSheet = document.getElementById("imageSheet");
+      const textModal = document.getElementById("textModal");
+      const textSheet = document.getElementById("textSheet");
+      const textModalBody = document.getElementById("textModalBody");
+      const closeTextBtn = document.getElementById("closeTextBtn");
+      const fileMenu = document.getElementById("fileMenu");
+      const fileActionModal = document.getElementById("fileActionModal");
+      const fileActionTitle = document.getElementById("fileActionTitle");
+      const closeFileActionBtn = document.getElementById("closeFileActionBtn");
+      const cancelFileActionBtn = document.getElementById("cancelFileActionBtn");
+      const confirmFileActionBtn = document.getElementById("confirmFileActionBtn");
+      const fileRenameField = document.getElementById("fileRenameField");
+      const fileRenameInput = document.getElementById("fileRenameInput");
+      const fileMoveField = document.getElementById("fileMoveField");
+      const fileMoveSelect = document.getElementById("fileMoveSelect");
+      const markTextBtn = document.getElementById("markTextBtn");
+      const clearMarksBtn = document.getElementById("clearMarksBtn");
+      const markList = document.getElementById("markList");
+      const composerInput = document.getElementById("composerInput");
+      const composerCopyBtn = document.getElementById("composerCopyBtn");
+      const composerClearBtn = document.getElementById("composerClearBtn");
+      const composer = document.querySelector(".composer");
+      const composerHandle = composer?.querySelector(".viewer-header");
+
+      async function api(path, options = {}) {
+        const response = await fetch(path, {
+          ...options,
+          headers: {
+            "Content-Type": "application/json",
+            ...(options.headers || {})
+          }
+        });
+
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data.error || "请求失败");
+        }
+        return data;
+      }
+
+      function showToast(message, isError = false) {
+        toast.textContent = message;
+        toast.style.background = isError ? "rgba(242, 85, 90, 0.92)" : "rgba(32, 163, 127, 0.96)";
+        toast.classList.add("show");
+        clearTimeout(showToast.timer);
+        showToast.timer = setTimeout(() => toast.classList.remove("show"), 1600);
+      }
+
+      function buildCategoryTree(categories) {
+        const map = new Map();
+        categories.forEach((cat) => map.set(cat.id, { ...cat, children: [] }));
+        const roots = [];
+        map.forEach((cat) => {
+          if (cat.parent_id && map.has(cat.parent_id)) {
+            map.get(cat.parent_id).children.push(cat);
+          } else {
+            roots.push(cat);
+          }
+        });
+        return roots;
+      }
+
+      function flattenCategories(nodes, depth = 0, list = []) {
+        nodes.forEach((node) => {
+          const prefix = depth ? `${"- ".repeat(depth)}` : "";
+          list.push({ id: node.id, label: `${prefix}${node.name}` });
+          if (node.children?.length) {
+            flattenCategories(node.children, depth + 1, list);
+          }
+        });
+        return list;
+      }
+
+      function flattenCategoriesWithDepth(nodes, depth = 0, list = []) {
+        nodes.forEach((node) => {
+          const prefix = depth ? `${"- ".repeat(depth)}` : "";
+          list.push({ id: node.id, label: `${prefix}${node.name}`, depth });
+          if (node.children?.length) {
+            flattenCategoriesWithDepth(node.children, depth + 1, list);
+          }
+        });
+        return list;
+      }
+
+      function collectDescendantIds(categories, rootId) {
+        const childMap = new Map();
+        categories.forEach((cat) => {
+          const key = cat.parent_id || "root";
+          if (!childMap.has(key)) childMap.set(key, []);
+          childMap.get(key).push(cat.id);
+        });
+        const result = new Set();
+        const walk = (id) => {
+          result.add(id);
+          (childMap.get(id) || []).forEach(walk);
+        };
+        walk(rootId);
+        return result;
+      }
+
+      function buildCategoryPathMap(categories) {
+        const map = new Map(categories.map((cat) => [cat.id, cat]));
+        const pathMap = new Map();
+        categories.forEach((cat) => {
+          const parts = [];
+          let current = cat;
+          while (current) {
+            parts.unshift(current.name);
+            if (!current.parent_id) break;
+            current = map.get(current.parent_id);
+          }
+          pathMap.set(cat.id, parts.join(" / "));
+        });
+        return pathMap;
+      }
+
+      function buildCategoryDepthMap(categories) {
+        const tree = buildCategoryTree(categories);
+        const depthMap = new Map();
+        const walk = (node, depth) => {
+          depthMap.set(node.id, depth);
+          (node.children || []).forEach((child) => walk(child, depth + 1));
+        };
+        tree.forEach((node) => walk(node, 0));
+        return depthMap;
+      }
+
+      function getSubtreeMaxDepth(categories, rootId) {
+        const childrenMap = new Map();
+        categories.forEach((cat) => {
+          const key = cat.parent_id || "root";
+          if (!childrenMap.has(key)) childrenMap.set(key, []);
+          childrenMap.get(key).push(cat.id);
+        });
+        const dfs = (id) => {
+          let max = 0;
+          (childrenMap.get(id) || []).forEach((childId) => {
+            max = Math.max(max, 1 + dfs(childId));
+          });
+          return max;
+        };
+        return dfs(rootId);
+      }
+
+      function getAncestorIds(categories, categoryId) {
+        const map = new Map(categories.map((cat) => [cat.id, cat]));
+        const ancestors = new Set();
+        let current = map.get(categoryId);
+        while (current?.parent_id) {
+          const parent = map.get(current.parent_id);
+          if (!parent) break;
+          ancestors.add(parent.id);
+          current = parent;
+        }
+        return ancestors;
+      }
+
+      function expandAncestors(categoryId) {
+        if (!categoryId) return;
+        const map = new Map(state.db.categories.map((cat) => [cat.id, cat]));
+        let current = map.get(categoryId);
+        while (current) {
+          if (state.collapsedCategoryIds.has(current.id)) {
+            state.collapsedCategoryIds.delete(current.id);
+          }
+          if (!current.parent_id) break;
+          current = map.get(current.parent_id);
+        }
+      }
+
+      function scrollFileIntoView(fileId) {
+        if (!fileId) return;
+        if (!categoryList) return;
+        const item = categoryList.querySelector(`.category-item[data-file-id="${fileId}"]`);
+        if (!item) return;
+        const paddingTop = parseFloat(getComputedStyle(categoryList).paddingTop || "0");
+        const listRect = categoryList.getBoundingClientRect();
+        const itemRect = item.getBoundingClientRect();
+        const top = itemRect.top - listRect.top + categoryList.scrollTop - paddingTop;
+        categoryList.scrollTop = Math.max(0, top);
+      }
+
+      function buildPromptCountMap(tree, prompts) {
+        const direct = new Map();
+        prompts.forEach((prompt) => {
+          direct.set(prompt.category_id, (direct.get(prompt.category_id) || 0) + 1);
+        });
+        const counts = new Map();
+        const walk = (node) => {
+          const base = direct.get(node.id) || 0;
+          const childrenCount = (node.children || []).reduce((sum, child) => sum + walk(child), 0);
+          const total = base + childrenCount;
+          counts.set(node.id, total);
+          return total;
+        };
+        tree.forEach(walk);
+        return counts;
+      }
+
+      function getFilteredPrompts() {
+        const key = searchInput.value.trim().toLowerCase();
+        const descendantIds =
+          state.activeCategoryId === "all"
+            ? null
+            : collectDescendantIds(state.db.categories, state.activeCategoryId);
+        const categoryPathMap = buildCategoryPathMap(state.db.categories);
+
+        return sortPromptsByUpdated(
+          state.db.prompts
+          .filter((prompt) => {
+            if (descendantIds && !descendantIds.has(prompt.category_id)) return false;
+            if (!key) return true;
+            const stack = [
+              prompt.title,
+              categoryPathMap.get(prompt.category_id) || "",
+              (prompt.tags || []).join(" "),
+              prompt.content
+            ]
+              .join(" ")
+              .toLowerCase();
+            return stack.includes(key);
+          })
+        );
+      }
+
+      function renderCategoryList() {
+        const tree = buildCategoryTree(state.db.categories);
+        const counts = buildPromptCountMap(tree, state.db.prompts);
+        const prevScrollTop = categoryList.scrollTop;
+        categoryList.innerHTML = "";
+        const activePrompt = state.db.prompts.find((item) => item.id === state.activePromptId);
+        const highlightCategoryId =
+          (state.activeCategoryId && state.activeCategoryId !== "all"
+            ? state.activeCategoryId
+            : null) || activePrompt?.category_id;
+        const ancestorIds = highlightCategoryId
+          ? getAncestorIds(state.db.categories, highlightCategoryId)
+          : new Set();
+
+        const allItem = document.createElement("div");
+        allItem.className = `category-item ${state.activeCategoryId === "all" ? "active" : ""}`;
+        allItem.innerHTML = `<div class="category-label">全部文件</div><span class="badge">${
+          state.db.prompts.length
+        }</span>`;
+        allItem.addEventListener("click", () => {
+          state.activeCategoryId = "all";
+          state.activePromptId = null;
+          state.pinnedPromptId = null;
+          renderAll();
+        });
+        categoryList.appendChild(allItem);
+
+        if (!tree.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "还没有文件";
+          categoryList.appendChild(empty);
+          return;
+        }
+
+        const renderNode = (node, depth, indexPath) => {
+          const pathLabel = indexPath.join(".");
+          const item = document.createElement("div");
+          item.className = `category-item ${state.activeCategoryId === node.id ? "active" : ""} ${
+            ancestorIds.has(node.id) ? "ancestor" : ""
+          }`;
+          item.dataset.fileId = node.id;
+          const clampedDepth = Math.min(depth, 3);
+          item.style.setProperty("--depth", clampedDepth);
+          item.dataset.depth = String(clampedDepth);
+          let promptsInFile = sortPromptsByUpdated(
+            state.db.prompts.filter((prompt) => prompt.category_id === node.id)
+          );
+          const hasChildren = (node.children || []).length > 0;
+          const hasSubItems = hasChildren || promptsInFile.length > 0;
+          const isCollapsed = state.collapsedCategoryIds.has(node.id);
+          const toggle = hasSubItems
+            ? `<button type="button" class="cat-toggle ${
+                isCollapsed ? "" : "expanded"
+              }" data-action="toggle" aria-label="折叠/展开">▸</button>`
+            : `<span class="cat-toggle" style="visibility:hidden">▸</span>`;
+          item.innerHTML = `
+            <div class="category-label">
+              ${toggle}
+              <span>${node.name}</span>
+            </div>
+            <span class="badge">${counts.get(node.id) || 0}</span>
+          `;
+          const toggleBtn = item.querySelector('[data-action="toggle"]');
+          if (toggleBtn) {
+            toggleBtn.addEventListener("click", (event) => {
+              event.stopPropagation();
+              if (state.collapsedCategoryIds.has(node.id)) {
+                state.collapsedCategoryIds.delete(node.id);
+              } else {
+                state.collapsedCategoryIds.add(node.id);
+              }
+              renderCategoryList();
+            });
+          }
+          item.addEventListener("click", (event) => {
+            if (Date.now() < state.drag.suppressClickUntil) return;
+            state.activeCategoryId = node.id;
+            state.activePromptId = null;
+            state.pinnedPromptId = null;
+            renderAll();
+          });
+          item.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0) return;
+            startDragCandidate(event, "file", node.id);
+          });
+          item.addEventListener("contextmenu", (event) => {
+            event.preventDefault();
+            openFileMenu(event, node.id);
+          });
+          categoryList.appendChild(item);
+          if (!isCollapsed) {
+            const pinnedIndex = state.pinnedPromptId
+              ? promptsInFile.findIndex((prompt) => prompt.id === state.pinnedPromptId)
+              : -1;
+            if (pinnedIndex > 0) {
+              const [pinned] = promptsInFile.splice(pinnedIndex, 1);
+              promptsInFile = [pinned, ...promptsInFile];
+            }
+            promptsInFile.forEach((prompt) => {
+              const promptItem = document.createElement("div");
+              promptItem.className = `file-prompt ${
+                state.activePromptId === prompt.id ? "active" : ""
+              }`;
+              const promptDepth = Math.min(depth + 1, 3);
+              promptItem.style.setProperty("--depth", promptDepth);
+              promptItem.dataset.depth = String(promptDepth);
+              promptItem.dataset.promptId = prompt.id;
+              promptItem.textContent = prompt.title;
+              promptItem.addEventListener("click", (event) => {
+                if (Date.now() < state.drag.suppressClickUntil) return;
+                event.stopPropagation();
+                state.activeCategoryId = node.id;
+                state.activePromptId = prompt.id;
+                state.pinnedPromptId = prompt.id;
+                renderAll();
+              });
+              promptItem.addEventListener("pointerdown", (event) => {
+                if (event.button !== 0) return;
+                startDragCandidate(event, "prompt", prompt.id);
+              });
+              categoryList.appendChild(promptItem);
+            });
+            (node.children || []).forEach((child, idx) =>
+              renderNode(child, depth + 1, [...indexPath, idx + 1])
+            );
+          }
+        };
+
+        tree.forEach((node, idx) => renderNode(node, 0, [idx + 1]));
+        if (Number.isFinite(prevScrollTop)) {
+          categoryList.scrollTop = prevScrollTop;
+        }
+      }
+
+      function renderCategoryOptions() {
+        const tree = buildCategoryTree(state.db.categories);
+        const options = [{ id: "", label: "无父级" }].concat(
+          flattenCategoriesWithDepth(tree).filter((item) => item.depth <= 2)
+        );
+        categoryParent.innerHTML = options
+          .map((option) => `<option value="${option.id}">${option.label}</option>`)
+          .join("");
+      }
+
+      function selectPrompt(promptId, card) {
+        state.activePromptId = promptId;
+        const current = promptList.querySelector(".prompt-card.active");
+        if (current) current.classList.remove("active");
+        if (card) {
+          card.classList.add("active");
+          card.classList.remove("select-anim");
+          void card.offsetWidth;
+          card.classList.add("select-anim");
+          setTimeout(() => card.classList.remove("select-anim"), 260);
+        }
+        renderPromptViewer();
+      }
+
+      function renderPromptList() {
+        let list = getFilteredPrompts();
+        promptCount.textContent = `${list.length} 条`;
+        promptList.innerHTML = "";
+
+        if (!list.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "当前条件下没有 Prompt";
+          promptList.appendChild(empty);
+          state.activePromptId = null;
+          renderPromptViewer();
+          return;
+        }
+
+        const pinnedIndex = state.pinnedPromptId
+          ? list.findIndex((prompt) => prompt.id === state.pinnedPromptId)
+          : -1;
+        if (pinnedIndex > 0) {
+          const [pinned] = list.splice(pinnedIndex, 1);
+          list = [pinned, ...list];
+        } else if (pinnedIndex === -1) {
+          state.pinnedPromptId = null;
+        }
+
+        if (!list.some((prompt) => prompt.id === state.activePromptId)) {
+          state.activePromptId = list[0].id;
+        }
+
+        const categoryPathMap = buildCategoryPathMap(state.db.categories);
+
+        const wrapper = document.createElement("div");
+        wrapper.className = "prompt-list";
+
+        list.forEach((prompt, index) => {
+          const card = document.createElement("article");
+          const hasThumb = Boolean(prompt.images?.length);
+          card.className = `prompt-card ${hasThumb ? "has-thumb" : "no-thumb"} ${
+            prompt.id === state.activePromptId ? "active" : ""
+          }`;
+          card.style.animationDelay = `${Math.min(index * 40, 320)}ms`;
+
+          const tags = (prompt.tags || [])
+            .slice(0, 4)
+            .map((tag) => `<span class="tag">${tag}</span>`)
+            .join("");
+
+          const thumbHtml = hasThumb
+            ? `<div class="prompt-thumb"><img src="${prompt.images[0].data}" alt="${
+                prompt.images[0].name || "preview"
+              }" /></div>`
+            : "";
+
+          card.innerHTML = `
+            ${thumbHtml}
+            <div class="prompt-content">
+              <h3>${escapeHtml(prompt.title)}</h3>
+              <div class="prompt-meta">${categoryPathMap.get(prompt.category_id) || "未分类"}</div>
+              <div class="tag-row">${tags}</div>
+              <div class="prompt-preview"></div>
+              <div class="prompt-actions">
+              <button class="btn btn-subtle copy-btn bubble-btn ${
+                state.copiedId === prompt.id ? "copied" : ""
+              }" data-action="copy"><span class="btn-label">复制</span></button>
+              <button class="btn btn-ghost bubble-btn" data-action="edit"><span class="btn-label">编辑</span></button>
+              <button class="btn btn-ghost bubble-btn" data-action="delete"><span class="btn-label">删除</span></button>
+            </div>
+              <div class="prompt-footer">
+                <span class="prompt-date">${formatDate(prompt.created_at || prompt.createdAt)}</span>
+              </div>
+            </div>
+          `;
+
+          const preview = card.querySelector(".prompt-preview");
+          preview.textContent =
+            prompt.content.length > 180 ? `${prompt.content.slice(0, 180)}...` : prompt.content;
+
+          const thumbImg = card.querySelector(".prompt-thumb img");
+          if (thumbImg) {
+            thumbImg.addEventListener("click", (event) => {
+              event.stopPropagation();
+              openImageModal(thumbImg.src, thumbImg.alt);
+            });
+          }
+
+          card.addEventListener("click", (event) => {
+            const actionButton = event.target?.closest?.("[data-action]");
+            const action = actionButton?.dataset?.action;
+            if (action) {
+              event.stopPropagation();
+              event.stopImmediatePropagation();
+              if (action === "copy") {
+                handleCopy(prompt, actionButton);
+                return;
+              }
+              if (action === "edit") {
+                openEditor(prompt);
+                return;
+              }
+              if (action === "delete") {
+                handleDeletePrompt(prompt);
+                return;
+              }
+            }
+
+            selectPrompt(prompt.id, card);
+          });
+
+          wrapper.appendChild(card);
+        });
+
+        promptList.appendChild(wrapper);
+        renderPromptViewer();
+        promptList.scrollTop = 0;
+      }
+
+      function renderPromptViewer() {
+        const list = getFilteredPrompts();
+        const prompt = list.find((item) => item.id === state.activePromptId) || null;
+        promptViewer.innerHTML = "";
+
+        if (!prompt) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "选择一个 Prompt 查看内容";
+          promptViewer.appendChild(empty);
+          return;
+        }
+
+        const categoryPathMap = buildCategoryPathMap(state.db.categories);
+        const wrapper = document.createElement("div");
+        wrapper.className = "viewer";
+
+        const tags = (prompt.tags || []).map((tag) => `<span class="tag">${tag}</span>`).join("");
+        const images = (prompt.images || [])
+          .map(
+            (image) => `
+              <div class="image-card">
+                <img src="${image.data}" alt="${image.name || "Prompt image"}" />
+              </div>
+            `
+          )
+          .join("");
+
+        wrapper.innerHTML = `
+          <div class="viewer-header">
+            <div>
+              <h3 class="viewer-title">${prompt.title}</h3>
+              <div class="prompt-meta">${categoryPathMap.get(prompt.category_id) || "未分类"}</div>
+            </div>
+            <div class="prompt-actions">
+              <button class="btn btn-ghost bubble-btn" id="viewerTextBtn"><span class="btn-label">查看文字</span></button>
+              <button class="btn btn-subtle copy-btn bubble-btn ${
+                state.copiedId === prompt.id ? "copied" : ""
+              }" id="viewerCopyBtn"><span class="btn-label">复制</span></button>
+            </div>
+          </div>
+          <div class="tag-row">${tags}</div>
+          ${
+            prompt.images?.length
+              ? `<div class="image-grid">${images}</div>`
+              : `<div class="empty">暂无图片</div>`
+          }
+          <div class="viewer-content"></div>
+        `;
+
+        const content = wrapper.querySelector(".viewer-content");
+        content.innerHTML = renderContentWithMarks(prompt.content, prompt.marks || []);
+        content.addEventListener("click", (event) => {
+          const bubble = event.target?.closest?.(".mark-bubble");
+          if (!bubble) return;
+          bubble.classList.remove("clicked");
+          void bubble.offsetWidth;
+          bubble.classList.add("clicked");
+          appendToComposer(bubble.textContent);
+        });
+
+        const copyBtn = wrapper.querySelector("#viewerCopyBtn");
+        copyBtn.addEventListener("click", () => handleCopy(prompt, copyBtn));
+        const textBtn = wrapper.querySelector("#viewerTextBtn");
+        textBtn.addEventListener("click", () => openTextModal(prompt));
+
+        promptViewer.appendChild(wrapper);
+      }
+
+      function renderEditorImages() {
+        imagePreview.innerHTML = "";
+        if (!state.editorImages.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "未添加图片";
+          imagePreview.appendChild(empty);
+          return;
+        }
+
+        state.editorImages.forEach((image) => {
+          const item = document.createElement("div");
+          item.className = "image-preview-item";
+          item.innerHTML = `
+            <img src="${image.data}" alt="${image.name || "preview"}" />
+            <button class="image-remove" type="button">×</button>
+          `;
+          item.querySelector(".image-remove").addEventListener("click", () => {
+            state.editorImages = state.editorImages.filter((img) => img.id !== image.id);
+            renderEditorImages();
+          });
+          imagePreview.appendChild(item);
+        });
+      }
+
+      function ensureActiveCategory() {
+        if (state.activeCategoryId === "all") return;
+        const exists = state.db.categories.some((cat) => cat.id === state.activeCategoryId);
+        if (!exists) state.activeCategoryId = "all";
+      }
+
+      function renderAll() {
+        ensureActiveCategory();
+        renderCategoryList();
+        renderCategoryOptions();
+        renderPromptList();
+      }
+
+      function getCategoryById(id) {
+        return state.db.categories.find((cat) => cat.id === id);
+      }
+
+      function getAvailableParents(fileId) {
+        const descendants = collectDescendantIds(state.db.categories, fileId);
+        const depthMap = buildCategoryDepthMap(state.db.categories);
+        const subtreeDepth = getSubtreeMaxDepth(state.db.categories, fileId);
+        const maxParentDepth = 2 - subtreeDepth;
+        return state.db.categories.filter(
+          (cat) => !descendants.has(cat.id) && (depthMap.get(cat.id) ?? 0) <= maxParentDepth
+        );
+      }
+
+      function openFileMenu(event, fileId) {
+        if (!fileMenu) return;
+        state.contextFileId = fileId;
+        const menuWidth = 180;
+        const menuHeight = 180;
+        const x = Math.min(event.clientX, window.innerWidth - menuWidth - 8);
+        const y = Math.min(event.clientY, window.innerHeight - menuHeight - 8);
+        fileMenu.style.left = `${Math.max(8, x)}px`;
+        fileMenu.style.top = `${Math.max(8, y)}px`;
+        fileMenu.hidden = false;
+      }
+
+      function closeFileMenu() {
+        if (!fileMenu) return;
+        fileMenu.hidden = true;
+        state.contextFileId = null;
+      }
+
+      function openFileAction(type, fileId) {
+        state.fileAction = { type, fileId };
+        const target = getCategoryById(fileId);
+        if (!target) return;
+
+        if (type === "rename") {
+          fileActionTitle.textContent = "重命名文件";
+          fileRenameField.hidden = false;
+          fileMoveField.hidden = true;
+          fileRenameInput.value = target.name || "";
+        } else if (type === "move") {
+          fileActionTitle.textContent = "转移文件";
+          fileRenameField.hidden = true;
+          fileMoveField.hidden = false;
+          const parents = getAvailableParents(fileId);
+          const depthMap = buildCategoryDepthMap(state.db.categories);
+          const options = [{ id: "", name: "无父级" }, ...parents].map((item) => {
+            if (!item.id) return item;
+            const depth = depthMap.get(item.id) ?? 0;
+            const prefix = depth ? `${"- ".repeat(depth)}` : "";
+            return { ...item, name: `${prefix}${item.name}` };
+          });
+          fileMoveSelect.innerHTML = options
+            .map((item) => `<option value="${item.id}">${item.name}</option>`)
+            .join("");
+          fileMoveSelect.value = target.parent_id || "";
+        }
+        fileActionModal.hidden = false;
+      }
+
+      function closeFileAction() {
+        fileActionModal.hidden = true;
+        state.fileAction = { type: null, fileId: null };
+      }
+
+      async function duplicateFile(fileId) {
+        const result = await api(`/api/categories/${encodeURIComponent(fileId)}/duplicate`, {
+          method: "POST"
+        });
+        state.db = result.db;
+        renderAll();
+        showToast("文件已复制");
+      }
+
+      async function renameFile(fileId, name) {
+        const result = await api(`/api/categories/${encodeURIComponent(fileId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ name })
+        });
+        state.db = result.db;
+        renderAll();
+        showToast("文件已重命名");
+      }
+
+      async function moveFile(fileId, parentId) {
+        const result = await api(`/api/categories/${encodeURIComponent(fileId)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ parent_id: parentId || null })
+        });
+        state.db = result.db;
+        renderAll();
+        showToast("文件已转移");
+      }
+
+      async function deleteFile(fileId) {
+        if (!window.confirm("确认删除该文件及其内容吗？")) return;
+        const result = await api(`/api/categories/${encodeURIComponent(fileId)}`, {
+          method: "DELETE"
+        });
+        state.db = result.db;
+        renderAll();
+        showToast("文件已删除");
+      }
+
+      function startDragCandidate(event, type, id) {
+        if (state.drag.active) return;
+        if (event.target?.closest?.('[data-action="toggle"]')) return;
+        clearTimeout(state.drag.timer);
+        state.drag.type = type;
+        state.drag.id = id;
+        state.drag.startX = event.clientX;
+        state.drag.startY = event.clientY;
+        state.drag.moved = false;
+        state.drag.timer = setTimeout(() => activateDrag(event), 220);
+
+        const onMove = (moveEvent) => {
+          if (state.drag.active) {
+            updateDrag(moveEvent);
+            return;
+          }
+          const dx = moveEvent.clientX - state.drag.startX;
+          const dy = moveEvent.clientY - state.drag.startY;
+          if (Math.hypot(dx, dy) > 6) {
+            cancelDragCandidate();
+          }
+        };
+
+        const onUp = () => {
+          if (!state.drag.active) {
+            cancelDragCandidate();
+            return;
+          }
+          finishDrag();
+        };
+
+        state.drag.moveHandler = onMove;
+        state.drag.upHandler = onUp;
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp, { once: true });
+      }
+
+      function cancelDragCandidate() {
+        clearTimeout(state.drag.timer);
+        state.drag.timer = null;
+        if (state.drag.moveHandler) {
+          window.removeEventListener("pointermove", state.drag.moveHandler);
+          state.drag.moveHandler = null;
+        }
+        state.drag.type = null;
+        state.drag.id = null;
+      }
+
+      function activateDrag(event) {
+        state.drag.active = true;
+        event?.preventDefault?.();
+        document.body.classList.add("dragging");
+        state.drag.motion = {
+          sx: 1,
+          sy: 1,
+          rot: 0,
+          float: 0.06,
+          speed: 0,
+          targetSx: 1,
+          targetSy: 1,
+          targetRot: 0,
+          targetFloat: 0.06,
+          targetFloatDur: 5.2,
+          targetShimmer: 3.8,
+          targetSpeed: 0
+        };
+        const orb = document.createElement("div");
+        orb.className = "drag-orb active";
+        orb.style.setProperty("--sx", "1");
+        orb.style.setProperty("--sy", "1");
+        orb.style.setProperty("--float", "0.06");
+        orb.style.setProperty("--shimmer", "3.8s");
+        orb.style.animationDuration = "5.2s";
+        document.body.appendChild(orb);
+        state.drag.orb = orb;
+        updateOrbPosition(event.clientX, event.clientY);
+        startDragPhysics();
+      }
+
+      function startDragPhysics() {
+        if (state.drag.animId) return;
+        const step = () => {
+          if (!state.drag.active || !state.drag.orb) {
+            state.drag.animId = null;
+            return;
+          }
+          const m = state.drag.motion;
+          const ease = 0.07;
+          m.sx += (m.targetSx - m.sx) * ease;
+          m.sy += (m.targetSy - m.sy) * ease;
+          m.float += (m.targetFloat - m.float) * 0.1;
+          m.speed += (m.targetSpeed - m.speed) * 0.08;
+          const rotDiff = ((m.targetRot - m.rot + 180) % 360) - 180;
+          m.rot += rotDiff * 0.06;
+
+          state.drag.orb.style.setProperty("--sx", m.sx.toFixed(2));
+          state.drag.orb.style.setProperty("--sy", m.sy.toFixed(2));
+          state.drag.orb.style.setProperty("--rot", `${m.rot.toFixed(1)}deg`);
+          state.drag.orb.style.setProperty("--float", m.float.toFixed(2));
+          const floatDuration = m.targetFloatDur;
+          const shimmerDuration = m.targetShimmer;
+          state.drag.orb.style.animationDuration = `${floatDuration.toFixed(2)}s`;
+          state.drag.orb.style.setProperty("--shimmer", `${shimmerDuration.toFixed(2)}s`);
+
+          
+
+          state.drag.animId = requestAnimationFrame(step);
+        };
+        state.drag.animId = requestAnimationFrame(step);
+      }
+
+      function updateOrbPosition(x, y) {
+        if (!state.drag.orb) return;
+        state.drag.orb.style.left = `${x}px`;
+        state.drag.orb.style.top = `${y}px`;
+      }
+
+      function updateDrag(event) {
+        updateOrbPosition(event.clientX, event.clientY);
+        if (!state.drag.moved) {
+          const dx = event.clientX - state.drag.startX;
+          const dy = event.clientY - state.drag.startY;
+          if (Math.hypot(dx, dy) > 4) {
+            state.drag.moved = true;
+          }
+        }
+        const now = performance.now();
+        const prev = state.drag.lastMove || { x: event.clientX, y: event.clientY, t: now };
+        const dt = Math.max(16, now - prev.t);
+        const vx = (event.clientX - prev.x) / dt;
+        const vy = (event.clientY - prev.y) / dt;
+        const speed = Math.min(Math.hypot(vx, vy) * 24, 2.6);
+        const speedNorm = Math.min(speed / 2.6, 1);
+        const curve = Math.pow(speedNorm, 1.2);
+        const sx = 1 + curve * 0.4;
+        const sy = 1 - curve * 0.25;
+        const floatiness = 0.06 + curve * 0.22;
+        const floatDuration = 5.2 - curve * 2.0;
+        const shimmerDuration = 3.8 - curve * 1.4;
+
+        state.drag.motion.targetSx = Math.max(0.92, Math.min(1.35, sx));
+        state.drag.motion.targetSy = Math.max(0.85, Math.min(1.2, sy));
+        state.drag.motion.targetRot = (Math.atan2(vy, vx) * 180) / Math.PI;
+        state.drag.motion.targetFloat = floatiness;
+        state.drag.motion.targetFloatDur = floatDuration;
+        state.drag.motion.targetShimmer = shimmerDuration;
+        state.drag.motion.targetSpeed = speed;
+        
+        state.drag.lastMove = { x: event.clientX, y: event.clientY, t: now };
+        const target = document.elementFromPoint(event.clientX, event.clientY);
+        const fileItem = target?.closest?.(".category-item");
+        const targetId = fileItem?.dataset?.fileId || null;
+        if (state.drag.targetId !== targetId) {
+          const prev = document.querySelector(".category-item.drag-target");
+          if (prev) prev.classList.remove("drag-target");
+          if (fileItem && targetId && targetId !== state.drag.id) {
+            fileItem.classList.add("drag-target");
+          }
+          state.drag.targetId = targetId;
+        }
+      }
+
+      function cleanupDrag(options = {}) {
+        const keepOrb = Boolean(options.keepOrb);
+        if (state.drag.orb && !keepOrb) {
+          state.drag.orb.remove();
+        }
+        const prev = document.querySelector(".category-item.drag-target");
+        if (prev) prev.classList.remove("drag-target");
+        if (state.drag.moveHandler) {
+          window.removeEventListener("pointermove", state.drag.moveHandler);
+        }
+        state.drag.orb = null;
+        state.drag.active = false;
+        state.drag.targetId = null;
+        state.drag.moveHandler = null;
+        clearTimeout(state.drag.timer);
+        state.drag.timer = null;
+        state.drag.lastMove = null;
+        state.drag.moved = false;
+        document.body.classList.remove("dragging");
+      }
+
+      async function finishDrag() {
+        const targetId = state.drag.targetId;
+        const dragType = state.drag.type;
+        const dragId = state.drag.id;
+        const success = Boolean(targetId);
+        const orb = state.drag.orb;
+        const targetEl = targetId
+          ? document.querySelector(`.category-item[data-file-id="${targetId}"]`)
+          : null;
+        if (targetEl && success) {
+          targetEl.classList.add("drop-flash");
+          setTimeout(() => targetEl.classList.remove("drop-flash"), 300);
+        }
+        if (orb) {
+          orb.classList.add("settle");
+          orb.classList.add("release");
+        }
+        cleanupDrag({ keepOrb: Boolean(orb) });
+        if (orb) {
+          const removeOrb = () => orb.remove();
+          orb.addEventListener("animationend", removeOrb, { once: true });
+          setTimeout(removeOrb, 420);
+        }
+        state.drag.suppressClickUntil = Date.now() + 250;
+
+        if (!targetId) {
+          if (!state.drag.moved) {
+            if (dragType === "file") {
+              state.activeCategoryId = dragId;
+              renderAll();
+              setTimeout(() => scrollFileIntoView(dragId), 0);
+            } else if (dragType === "prompt") {
+              const prompt = state.db.prompts.find((item) => item.id === dragId);
+              if (prompt) {
+                state.activeCategoryId = prompt.category_id;
+                state.activePromptId = prompt.id;
+                renderAll();
+                setTimeout(() => scrollFileIntoView(prompt.category_id), 0);
+              }
+            }
+          }
+          return;
+        }
+
+        try {
+          if (dragType === "file") {
+            if (dragId === targetId) return;
+            const descendants = collectDescendantIds(state.db.categories, dragId);
+            if (descendants.has(targetId)) {
+              showToast("不能移动到子文件中", true);
+              return;
+            }
+            await moveFile(dragId, targetId);
+          } else if (dragType === "prompt") {
+            const prompt = state.db.prompts.find((item) => item.id === dragId);
+            if (!prompt) return;
+            if (prompt.category_id === targetId) return;
+            const payload = {
+              id: prompt.id,
+              title: prompt.title,
+              category_id: targetId,
+              tags: prompt.tags || [],
+              content: prompt.content || "",
+              images: prompt.images || [],
+              marks: prompt.marks || []
+            };
+            const result = await api("/api/prompts", {
+              method: "POST",
+              body: JSON.stringify(payload)
+            });
+            state.db = result.db;
+            state.activeCategoryId = targetId;
+            state.activePromptId = prompt.id;
+            renderAll();
+            showToast("提示词已转移");
+          }
+        } catch (error) {
+          showToast(error.message || "转移失败", true);
+        }
+      }
+
+      function escapeHtml(text) {
+        return String(text)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#039;");
+      }
+
+      function escapeRegExp(text) {
+        return String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+
+      function formatDate(value) {
+        if (!value) return "";
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return "";
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+
+      const MARK_COLORS = ["#ff6b6b", "#f59e0b", "#10b981", "#3b82f6", "#a855f7", "#ec4899"];
+      let isRefreshingEditor = false;
+
+      function sortPromptsByUpdated(list) {
+        return [...list].sort((a, b) => {
+          const timeA = new Date(a.updated_at || a.created_at || 0).getTime();
+          const timeB = new Date(b.updated_at || b.created_at || 0).getTime();
+          return timeB - timeA;
+        });
+      }
+
+      function renderContentWithMarks(content, marks) {
+        const cleanMarks = Array.from(new Set((marks || []).map((m) => String(m).trim()))).filter(
+          Boolean
+        );
+        if (!cleanMarks.length) {
+          return escapeHtml(content);
+        }
+        const sorted = [...cleanMarks].sort((a, b) => b.length - a.length);
+        const pattern = sorted.map(escapeRegExp).join("|");
+        const regex = new RegExp(pattern, "g");
+        let result = "";
+        let lastIndex = 0;
+        let match;
+
+        while ((match = regex.exec(content)) !== null) {
+          result += escapeHtml(content.slice(lastIndex, match.index));
+          const text = match[0];
+          const escaped = escapeHtml(text);
+          result += `<span class="mark-bubble" data-mark="${escaped}">${escaped}</span>`;
+          lastIndex = match.index + text.length;
+        }
+        result += escapeHtml(content.slice(lastIndex));
+        return result;
+      }
+
+      function renderContentWithColors(content, marks) {
+        const cleanMarks = Array.from(new Set((marks || []).map((m) => String(m).trim()))).filter(
+          Boolean
+        );
+        if (!cleanMarks.length) {
+          return escapeHtml(content);
+        }
+
+        const colorMap = new Map();
+        cleanMarks.forEach((mark, index) => {
+          colorMap.set(mark, MARK_COLORS[index % MARK_COLORS.length]);
+        });
+
+        const sorted = [...cleanMarks].sort((a, b) => b.length - a.length);
+        const pattern = sorted.map(escapeRegExp).join("|");
+        const regex = new RegExp(pattern, "g");
+        let result = "";
+        let lastIndex = 0;
+        let match;
+
+        while ((match = regex.exec(content)) !== null) {
+          result += escapeHtml(content.slice(lastIndex, match.index));
+          const text = match[0];
+          const escaped = escapeHtml(text);
+          const color = colorMap.get(text) || "#1f2a44";
+          result += `<span class="mark-color" data-mark="${escaped}" style="color:${color}">${escaped}</span>`;
+          lastIndex = match.index + text.length;
+        }
+        result += escapeHtml(content.slice(lastIndex));
+        return result;
+      }
+
+      function renderMarkList() {
+        markList.innerHTML = "";
+        if (!state.editorMarks.length) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "还没有标记词语";
+          markList.appendChild(empty);
+          return;
+        }
+
+        state.editorMarks.forEach((mark) => {
+          const chip = document.createElement("div");
+          chip.className = "mark-chip";
+          chip.innerHTML = `
+            <span>${escapeHtml(mark)}</span>
+            <button class="mark-remove" type="button">×</button>
+          `;
+          chip.querySelector(".mark-remove").addEventListener("click", () => {
+            state.editorMarks = state.editorMarks.filter((item) => item !== mark);
+            renderMarkList();
+            refreshEditorHighlights();
+          });
+          markList.appendChild(chip);
+        });
+      }
+
+      function getEditorPlainText() {
+        return promptContent?.innerText || "";
+      }
+
+      function getSelectionOffsets(el) {
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return { start: 0, end: 0 };
+        const range = selection.getRangeAt(0);
+        if (!el.contains(range.startContainer)) return { start: 0, end: 0 };
+        const preRange = range.cloneRange();
+        preRange.selectNodeContents(el);
+        preRange.setEnd(range.startContainer, range.startOffset);
+        const start = preRange.toString().length;
+        const preRangeEnd = range.cloneRange();
+        preRangeEnd.selectNodeContents(el);
+        preRangeEnd.setEnd(range.endContainer, range.endOffset);
+        const end = preRangeEnd.toString().length;
+        return { start, end };
+      }
+
+      function setSelectionOffsets(el, start, end) {
+        const range = document.createRange();
+        const selection = window.getSelection();
+        let current = 0;
+        let startNode = null;
+        let startOffset = 0;
+        let endNode = null;
+        let endOffset = 0;
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+        let node = walker.nextNode();
+        while (node) {
+          const len = node.nodeValue.length;
+          if (!startNode && current + len >= start) {
+            startNode = node;
+            startOffset = start - current;
+          }
+          if (current + len >= end) {
+            endNode = node;
+            endOffset = end - current;
+            break;
+          }
+          current += len;
+          node = walker.nextNode();
+        }
+        if (!startNode) {
+          startNode = el;
+          startOffset = 0;
+        }
+        if (!endNode) {
+          endNode = startNode;
+          endOffset = startOffset;
+        }
+        range.setStart(startNode, Math.max(0, startOffset));
+        range.setEnd(endNode, Math.max(0, endOffset));
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+
+      function refreshEditorHighlights() {
+        if (!promptContent) return;
+        if (isRefreshingEditor) return;
+        const selection = getSelectionOffsets(promptContent);
+        const content = getEditorPlainText();
+        isRefreshingEditor = true;
+        promptContent.innerHTML = renderContentWithColors(content, state.editorMarks || []);
+        isRefreshingEditor = false;
+        setSelectionOffsets(promptContent, selection.start, selection.end);
+      }
+
+      function markSelection() {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) {
+          showToast("请选择要标记的文字", true);
+          return;
+        }
+        if (!promptContent.contains(selection.anchorNode)) {
+          showToast("请选择要标记的文字", true);
+          return;
+        }
+        const selected = selection.toString().trim();
+        if (!selected) {
+          showToast("标记内容不能为空", true);
+          return;
+        }
+        if (state.editorMarks.includes(selected)) {
+          showToast("该词语已标记", true);
+          return;
+        }
+        state.editorMarks.push(selected);
+        renderMarkList();
+        refreshEditorHighlights();
+      }
+
+      function appendToComposer(text) {
+        const trimmed = String(text || "").trim().replace(/\s+/g, " ");
+        if (!trimmed) return;
+        const needsSpace = composerInput.value && !/[\\s]$/.test(composerInput.value);
+        composerInput.value = `${composerInput.value}${needsSpace ? " " : ""}${trimmed}`.trimStart();
+        composerInput.focus();
+      }
+
+      function openImageModal(src, alt) {
+        imageModalImg.src = src;
+        imageModalImg.alt = alt || "预览图";
+        imageModal.hidden = false;
+      }
+
+      function openTextModal(prompt) {
+        textModalBody.textContent = prompt?.content || "";
+        textModal.hidden = false;
+      }
+
+      function closeTextModal() {
+        textModal.hidden = true;
+        textModalBody.textContent = "";
+      }
+
+      function closeImageModal() {
+        imageModal.hidden = true;
+        imageModalImg.src = "";
+        imageModalImg.alt = "预览图";
+      }
+
+      async function refreshDb() {
+        try {
+          const data = await api("/api/db", { method: "GET", headers: {} });
+          state.db = data;
+          renderAll();
+        } catch (error) {
+          showToast(error.message || "加载失败", true);
+        }
+      }
+
+      async function handleCopy(prompt, button) {
+        try {
+          await navigator.clipboard.writeText(prompt.content);
+        } catch {
+          const input = document.createElement("textarea");
+          input.value = prompt.content;
+          document.body.appendChild(input);
+          input.select();
+          document.execCommand("copy");
+          document.body.removeChild(input);
+        }
+        state.copiedId = prompt.id;
+        if (button) button.classList.add("copied");
+        const viewerBtn = document.getElementById("viewerCopyBtn");
+        if (viewerBtn && prompt.id === state.activePromptId) {
+          viewerBtn.classList.add("copied");
+        }
+        showToast(`已复制：${prompt.title}`);
+        setTimeout(() => {
+          state.copiedId = null;
+          if (button) button.classList.remove("copied");
+          const viewerCopyBtn = document.getElementById("viewerCopyBtn");
+          if (viewerCopyBtn) viewerCopyBtn.classList.remove("copied");
+        }, 1200);
+      }
+
+      async function handleDeletePrompt(prompt) {
+        if (!window.confirm(`确认删除提示词「${prompt.title}」吗？`)) return;
+        try {
+          const result = await api(`/api/prompts/${encodeURIComponent(prompt.id)}`, {
+            method: "DELETE"
+          });
+          state.db = result.db;
+          renderAll();
+          showToast("提示词已删除");
+        } catch (error) {
+          showToast(error.message, true);
+        }
+      }
+
+      async function handleAddCategory() {
+        const name = categoryName.value.trim();
+        if (!name) {
+          showToast("请输入文件名称", true);
+          return;
+        }
+
+        try {
+          const result = await api("/api/categories", {
+            method: "POST",
+            body: JSON.stringify({
+              name,
+              parent_id: categoryParent.value || null
+            })
+          });
+          state.db = result.db;
+          categoryName.value = "";
+          categoryParent.value = "";
+          renderAll();
+          showToast("文件已创建");
+        } catch (error) {
+          showToast(error.message, true);
+        }
+      }
+
+      async function handleExport() {
+        try {
+          const response = await fetch("/api/export");
+          if (!response.ok) {
+            const data = await response.json().catch(() => ({}));
+            throw new Error(data.error || "导出失败");
+          }
+          const blob = await response.blob();
+          const url = URL.createObjectURL(blob);
+          const anchor = document.createElement("a");
+          anchor.href = url;
+          anchor.download = `prompts-${Date.now()}.promptpack`;
+          anchor.click();
+          URL.revokeObjectURL(url);
+          showToast("导出完成");
+        } catch (error) {
+          showToast(`导出失败：${error.message}`, true);
+        }
+      }
+
+      function fileToBase64(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = typeof reader.result === "string" ? reader.result : "";
+            const base64 = result.split(",")[1];
+            resolve(base64 || "");
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function handleImport(file) {
+        if (!file) return;
+        try {
+          const base64 = await fileToBase64(file);
+          if (!base64) throw new Error("读取文件失败");
+          const result = await api("/api/import-pack", {
+            method: "POST",
+            body: JSON.stringify({
+              name: file.name,
+              data: base64
+            })
+          });
+          state.db = result.db;
+          renderAll();
+          showToast("导入完成");
+        } catch (error) {
+          showToast(`导入失败：${error.message}`, true);
+        } finally {
+          importFile.value = "";
+        }
+      }
+
+      function openEditor(prompt = null) {
+        state.editorPromptId = prompt?.id || null;
+        state.editorImages = prompt?.images ? [...prompt.images] : [];
+        state.editorMarks = Array.isArray(prompt?.marks) ? [...prompt.marks] : [];
+        editorTitle.textContent = prompt ? "编辑 Prompt" : "新建 Prompt";
+        promptTitle.value = prompt?.title || "";
+        const tree = buildCategoryTree(state.db.categories);
+        const options = flattenCategories(tree);
+        promptCategory.innerHTML = options
+          .map((option) => `<option value="${option.id}">${option.label}</option>`)
+          .join("");
+        const activePrompt = state.db.prompts.find((item) => item.id === state.activePromptId);
+        const defaultCategoryId =
+          state.activeCategoryId && state.activeCategoryId !== "all"
+            ? state.activeCategoryId
+            : activePrompt?.category_id;
+        promptCategory.value = prompt?.category_id || defaultCategoryId || options[0]?.id || "";
+        promptTags.value = prompt?.tags?.join(",") || "";
+        promptContent.textContent = prompt?.content || "";
+        renderEditorImages();
+        renderMarkList();
+        refreshEditorHighlights();
+        editorModal.hidden = false;
+      }
+
+      function closeEditor() {
+        editorModal.hidden = true;
+        state.editorPromptId = null;
+        state.editorImages = [];
+        state.editorMarks = [];
+        editorForm.reset();
+        if (promptContent) promptContent.innerHTML = "";
+      }
+
+      async function handleSavePrompt(event) {
+        event.preventDefault();
+        const contentValue = getEditorPlainText().trim();
+        const payload = {
+          id: state.editorPromptId,
+          title: promptTitle.value.trim(),
+          category_id: promptCategory.value,
+          tags: promptTags.value
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean),
+          content: contentValue,
+          images: state.editorImages,
+          marks: state.editorMarks
+        };
+
+        if (!payload.title || !payload.content) {
+          showToast("标题和内容不能为空", true);
+          return;
+        }
+
+        try {
+          const result = await api("/api/prompts", {
+            method: "POST",
+            body: JSON.stringify(payload)
+          });
+          state.db = result.db;
+          if (payload.category_id) {
+            state.activeCategoryId = payload.category_id;
+          }
+          closeEditor();
+          renderAll();
+          showToast(payload.id ? "提示词已更新" : "提示词已新增");
+        } catch (error) {
+          showToast(error.message, true);
+        }
+      }
+
+      async function handleAddImages(files) {
+        const list = Array.from(files || []);
+        if (!list.length) return;
+        const results = await Promise.all(
+          list.map(
+            (file) =>
+              new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () =>
+                  resolve({
+                    id: crypto.randomUUID(),
+                    name: file.name,
+                    data: typeof reader.result === "string" ? reader.result : ""
+                  });
+                reader.readAsDataURL(file);
+              })
+          )
+        );
+        state.editorImages = [...state.editorImages, ...results.filter((img) => img.data)];
+        renderEditorImages();
+      }
+
+      searchInput.addEventListener("input", () => renderPromptList());
+      exportBtn.addEventListener("click", handleExport);
+      importBtn.addEventListener("click", () => importFile.click());
+      importFile.addEventListener("change", (event) => handleImport(event.target.files?.[0]));
+      newPromptBtn.addEventListener("click", () => openEditor());
+      addCategoryBtn.addEventListener("click", handleAddCategory);
+      closeEditorBtn.addEventListener("click", closeEditor);
+      cancelEditorBtn.addEventListener("click", closeEditor);
+      editorModal.addEventListener("click", (event) => {
+        if (event.target === editorModal) closeEditor();
+      });
+      editorForm.addEventListener("submit", handleSavePrompt);
+      addImageBtn.addEventListener("click", () => imageInput.click());
+      clearImagesBtn.addEventListener("click", () => {
+        state.editorImages = [];
+        renderEditorImages();
+      });
+      imageInput.addEventListener("change", (event) => {
+        handleAddImages(event.target.files);
+        event.target.value = "";
+      });
+      markTextBtn.addEventListener("click", markSelection);
+      promptContent.addEventListener("keydown", (event) => {
+        if (event.key !== " ") return;
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) return;
+        if (!promptContent.contains(selection.anchorNode)) return;
+        event.preventDefault();
+        markSelection();
+      });
+      promptContent.addEventListener("input", () => {
+        if (isRefreshingEditor) return;
+        refreshEditorHighlights();
+      });
+      clearMarksBtn.addEventListener("click", () => {
+        state.editorMarks = [];
+        renderMarkList();
+        refreshEditorHighlights();
+      });
+      composerCopyBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(composerInput.value);
+          composerCopyBtn.classList.add("copied");
+          showToast("已复制编写内容");
+          setTimeout(() => composerCopyBtn.classList.remove("copied"), 600);
+        } catch (error) {
+          showToast(error.message || "复制失败", true);
+        }
+      });
+      composerClearBtn.addEventListener("click", () => {
+        composerInput.value = "";
+        showToast("编写内容已清空");
+      });
+      composerInput.addEventListener(
+        "wheel",
+        (event) => {
+          event.stopPropagation();
+        },
+        { passive: true }
+      );
+      fileMenu.addEventListener("click", async (event) => {
+        const action = event.target?.dataset?.action;
+        if (!action) return;
+        const fileId = state.contextFileId;
+        closeFileMenu();
+        if (!fileId) return;
+        try {
+          if (action === "duplicate") {
+            await duplicateFile(fileId);
+          } else if (action === "rename") {
+            openFileAction("rename", fileId);
+          } else if (action === "move") {
+            openFileAction("move", fileId);
+          } else if (action === "delete") {
+            await deleteFile(fileId);
+          }
+        } catch (error) {
+          showToast(error.message || "操作失败", true);
+        }
+      });
+      closeFileActionBtn.addEventListener("click", closeFileAction);
+      cancelFileActionBtn.addEventListener("click", closeFileAction);
+      confirmFileActionBtn.addEventListener("click", async () => {
+        const { type, fileId } = state.fileAction;
+        if (!fileId || !type) return;
+        try {
+          if (type === "rename") {
+            const name = fileRenameInput.value.trim();
+            if (!name) {
+              showToast("文件名称不能为空", true);
+              return;
+            }
+            await renameFile(fileId, name);
+          } else if (type === "move") {
+            await moveFile(fileId, fileMoveSelect.value);
+          }
+          closeFileAction();
+        } catch (error) {
+          showToast(error.message || "操作失败", true);
+        }
+      });
+      fileActionModal.addEventListener("click", (event) => {
+        if (event.target === fileActionModal) closeFileAction();
+      });
+      window.addEventListener("click", () => closeFileMenu());
+      window.addEventListener("scroll", () => closeFileMenu(), true);
+      imageSheet.addEventListener("click", (event) => event.stopPropagation());
+      imageModalImg.addEventListener("click", closeImageModal);
+      imageModal.addEventListener("click", closeImageModal);
+      textSheet.addEventListener("click", (event) => event.stopPropagation());
+      closeTextBtn.addEventListener("click", closeTextModal);
+      textModal.addEventListener("click", closeTextModal);
+      if (composer && composerHandle) {
+        let dragState = null;
+
+        const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+        const ensureComposerInView = () => {
+          const rect = composer.getBoundingClientRect();
+          const offscreen =
+            rect.right < 0 ||
+            rect.left > window.innerWidth ||
+            rect.bottom < 0 ||
+            rect.top > window.innerHeight;
+          if (offscreen) {
+            composer.style.left = "auto";
+            composer.style.top = "auto";
+            composer.style.right = "1.2rem";
+            composer.style.bottom = "1.2rem";
+          }
+        };
+        ensureComposerInView();
+
+        const onPointerMove = (event) => {
+          if (!dragState) return;
+          const rect = composer.getBoundingClientRect();
+          const x = event.clientX - dragState.offsetX;
+          const y = event.clientY - dragState.offsetY;
+          const maxX = window.innerWidth - rect.width - 8;
+          const maxY = window.innerHeight - rect.height - 8;
+          composer.style.left = `${clamp(x, 8, maxX)}px`;
+          composer.style.top = `${clamp(y, 8, maxY)}px`;
+        };
+
+        const endDrag = () => {
+          dragState = null;
+          composer.classList.remove("dragging");
+          window.removeEventListener("pointermove", onPointerMove);
+          window.removeEventListener("pointerup", endDrag);
+        };
+
+        const startDrag = (event) => {
+          if (event.button !== 0) return;
+          const rect = composer.getBoundingClientRect();
+          dragState = {
+            offsetX: event.clientX - rect.left,
+            offsetY: event.clientY - rect.top
+          };
+          composer.style.left = `${rect.left}px`;
+          composer.style.top = `${rect.top}px`;
+          composer.style.right = "auto";
+          composer.style.bottom = "auto";
+          composer.classList.add("dragging");
+          window.addEventListener("pointermove", onPointerMove);
+          window.addEventListener("pointerup", endDrag);
+        };
+
+        composerHandle.addEventListener("pointerdown", startDrag);
+        window.addEventListener("resize", () => {
+          const rect = composer.getBoundingClientRect();
+          const maxX = window.innerWidth - rect.width - 8;
+          const maxY = window.innerHeight - rect.height - 8;
+          composer.style.left = `${clamp(rect.left, 8, maxX)}px`;
+          composer.style.top = `${clamp(rect.top, 8, maxY)}px`;
+          ensureComposerInView();
+        });
+      }
+
+      refreshDb();
+    </script>
+  </body>
+</html>
