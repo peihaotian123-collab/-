@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 use std::process::Command;
+use tauri::Manager;
+use url::Url;
 
 fn resolve_server_path(app: &tauri::AppHandle) -> PathBuf {
     if let Ok(resource_dir) = app.path().resource_dir() {
@@ -33,6 +35,12 @@ fn main() {
                 .env("HOST", "127.0.0.1")
                 .spawn()
                 .map_err(|e| format!("无法启动本地服务: {e}"))?;
+
+            if let Some(window) = app.get_webview_window("main") {
+                if let Ok(url) = Url::parse("http://127.0.0.1:3000") {
+                    let _ = window.navigate(url);
+                }
+            }
 
             Ok(())
         })

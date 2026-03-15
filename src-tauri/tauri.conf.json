@@ -1,18 +1,20 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "假于物prompt",
+  "version": "0.1.0",
+  "identifier": "com.peihaotian.jiawuprompt",
   "build": {
-    "devUrl": "http://127.0.0.1:3000",
-    "frontendDist": "http://127.0.0.1:3000"
+    "frontendDist": "../index.html",
+    "devUrl": "http://127.0.0.1:3000"
   },
   "app": {
-    "productName": "假于物prompt",
-    "version": "0.1.0",
-    "identifier": "com.peihaotian.jiawuprompt",
     "windows": [
       {
         "title": "假于物prompt",
         "width": 1200,
         "height": 760,
-        "resizable": true
+        "resizable": true,
+        "fullscreen": false
       }
     ],
     "security": {
@@ -23,7 +25,11 @@
     "active": true,
     "targets": "all",
     "icon": [
-      "icons/app-icon.png"
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
     ],
     "resources": [
       "../server.js"
